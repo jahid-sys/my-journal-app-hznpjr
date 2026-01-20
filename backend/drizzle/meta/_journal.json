@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1768898481626,
+      "tag": "20260120084121_tough_loners",
+      "breakpoints": true
+    }
+  ]
+}

@@ -48,15 +48,19 @@ export function register(app: App, fastify: FastifyInstance) {
   );
 
   // POST /api/journal/entries - Create new journal entry
-  fastify.post<{ Body: { title: string; content: string; mood?: string } }>(
+  fastify.post<{ Body: { title: string; content: string; mood?: string; type?: 'note' | 'checklist' } }>(
     '/api/journal/entries',
     async (request, reply) => {
       app.logger.info({ body: request.body }, 'Creating journal entry');
       try {
-        const { title, content, mood } = request.body;
+        const { title, content, mood, type = 'note' } = request.body;
 
         if (!title || !content) {
           return reply.code(400).send({ error: 'Title and content are required' });
+        }
+
+        if (type !== 'note' && type !== 'checklist') {
+          return reply.code(400).send({ error: 'Type must be "note" or "checklist"' });
         }
 
         const created = await app.db
@@ -65,10 +69,11 @@ export function register(app: App, fastify: FastifyInstance) {
             title,
             content,
             mood: mood || null,
+            type,
           })
           .returning();
 
-        app.logger.info({ entryId: created[0].id }, 'Journal entry created successfully');
+        app.logger.info({ entryId: created[0].id, type }, 'Journal entry created successfully');
         return reply.code(201).send(created[0]);
       } catch (error) {
         app.logger.error({ err: error, body: request.body }, 'Failed to create journal entry');
@@ -78,7 +83,7 @@ export function register(app: App, fastify: FastifyInstance) {
   );
 
   // PUT /api/journal/entries/:id - Update journal entry
-  fastify.put<{ Params: { id: string }; Body: { title?: string; content?: string; mood?: string } }>(
+  fastify.put<{ Params: { id: string }; Body: { title?: string; content?: string; mood?: string; type?: 'note' | 'checklist' } }>(
     '/api/journal/entries/:id',
     async (request, reply) => {
       const { id } = request.params;
@@ -95,6 +100,11 @@ export function register(app: App, fastify: FastifyInstance) {
           return reply.code(404).send({ error: 'Journal entry not found' });
         }
 
+        // Validate type if provided
+        if (request.body.type !== undefined && request.body.type !== 'note' && request.body.type !== 'checklist') {
+          return reply.code(400).send({ error: 'Type must be "note" or "checklist"' });
+        }
+
         // Build update object with only provided fields
         const updateData: Record<string, any> = {
           updatedAt: new Date(),
@@ -108,6 +118,9 @@ export function register(app: App, fastify: FastifyInstance) {
         }
         if (request.body.mood !== undefined) {
           updateData.mood = request.body.mood;
+        }
+        if (request.body.type !== undefined) {
+          updateData.type = request.body.type;
         }
 
         const updated = await app.db

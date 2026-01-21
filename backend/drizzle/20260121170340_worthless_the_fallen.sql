@@ -1,0 +1,1 @@
+ALTER TABLE "journal_entries" ADD COLUMN "type" text DEFAULT 'note' NOT NULL;

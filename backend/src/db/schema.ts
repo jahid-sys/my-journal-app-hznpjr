@@ -18,6 +18,7 @@ export const journalEntries = pgTable('journal_entries', {
   title: text('title').notNull(),
   content: text('content').notNull(),
   mood: text('mood'),
+  type: text('type').notNull().default('note'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

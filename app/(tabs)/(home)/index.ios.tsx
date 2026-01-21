@@ -15,7 +15,7 @@ import {
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors } from "@/styles/commonStyles";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { apiCall } from "@/utils/api";
+import { authenticatedApiCall } from "@/utils/api";
 import { useAuth } from "@/contexts/AuthContext";
 import { Redirect } from "expo-router";
 
@@ -64,7 +64,7 @@ export default function JournalScreen() {
   const fetchEntries = async () => {
     console.log("Fetching journal entries from backend");
     try {
-      const data = await apiCall<JournalEntry[]>('/api/journal/entries', {
+      const data = await authenticatedApiCall<JournalEntry[]>('/api/journal/entries', {
         method: 'GET',
       });
       console.log("✅ Fetched entries:", data);
@@ -140,7 +140,7 @@ export default function JournalScreen() {
     try {
       if (editingEntry) {
         console.log("Updating existing entry:", editingEntry.id);
-        const updatedEntry = await apiCall<JournalEntry>(
+        const updatedEntry = await authenticatedApiCall<JournalEntry>(
           `/api/journal/entries/${editingEntry.id}`,
           {
             method: 'PUT',
@@ -155,7 +155,7 @@ export default function JournalScreen() {
         console.log("✅ Entry updated:", updatedEntry);
       } else {
         console.log("Creating new entry");
-        const newEntry = await apiCall<JournalEntry>('/api/journal/entries', {
+        const newEntry = await authenticatedApiCall<JournalEntry>('/api/journal/entries', {
           method: 'POST',
           body: JSON.stringify({
             title: title.trim(),
@@ -187,7 +187,7 @@ export default function JournalScreen() {
           onPress: async () => {
             console.log("User confirmed deletion of entry:", id);
             try {
-              const result = await apiCall<{ success: boolean }>(
+              const result = await authenticatedApiCall<{ success: boolean }>(
                 `/api/journal/entries/${id}`,
                 {
                   method: 'DELETE',
@@ -217,7 +217,7 @@ export default function JournalScreen() {
       const items = JSON.parse(entry.content) as ChecklistItem[];
       items[itemIndex].completed = !items[itemIndex].completed;
       
-      const updatedEntry = await apiCall<JournalEntry>(
+      const updatedEntry = await authenticatedApiCall<JournalEntry>(
         `/api/journal/entries/${entryId}`,
         {
           method: 'PUT',

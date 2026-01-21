@@ -10,11 +10,14 @@ import {
   Modal,
   Alert,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors } from "@/styles/commonStyles";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { apiCall } from "@/utils/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { Redirect } from "expo-router";
 
 interface ChecklistItem {
   text: string;
@@ -40,6 +43,7 @@ const moodEmojis: { [key: string]: string } = {
 };
 
 export default function JournalScreen() {
+  const { user, loading: authLoading } = useAuth();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -51,9 +55,11 @@ export default function JournalScreen() {
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([{ text: "", completed: false }]);
 
   useEffect(() => {
-    console.log("JournalScreen mounted, fetching entries");
-    fetchEntries();
-  }, []);
+    if (user) {
+      console.log("JournalScreen mounted, user authenticated, fetching entries");
+      fetchEntries();
+    }
+  }, [user]);
 
   const fetchEntries = async () => {
     console.log("Fetching journal entries from backend");
@@ -326,6 +332,24 @@ export default function JournalScreen() {
       );
     }
   };
+
+  // Show loading spinner while checking authentication
+  if (authLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.emptyText}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Redirect to auth screen if not logged in
+  if (!user) {
+    console.log("User not authenticated, redirecting to auth screen");
+    return <Redirect href="/auth" />;
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

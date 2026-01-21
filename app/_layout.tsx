@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { useNetworkState } from "expo-network";
 import { SystemBars } from "react-native-edge-to-edge";
 import { WidgetProvider } from "@/contexts/WidgetContext";
+import { AuthProvider } from "@/contexts/AuthContext";
 import "react-native-reanimated";
 import React, { useEffect } from "react";
 import { useFonts } from "expo-font";
@@ -16,6 +17,7 @@ import {
 import { useColorScheme, Alert } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Stack } from "expo-router";
+import { BACKEND_URL } from "@/utils/api";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -61,6 +63,12 @@ export default function RootLayout() {
     }
   }, [loaded]);
 
+  useEffect(() => {
+    // Log backend URL on app startup for debugging
+    console.log("🚀 App started");
+    console.log("📡 Backend URL:", BACKEND_URL || "NOT CONFIGURED");
+  }, []);
+
   if (!loaded) {
     return null;
   }
@@ -68,13 +76,18 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={colorScheme === "dark" ? JournalDarkTheme : JournalLightTheme}>
-        <WidgetProvider>
-          <SystemBars style={colorScheme === "dark" ? "light" : "dark"} />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          </Stack>
-          <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
-        </WidgetProvider>
+        <AuthProvider>
+          <WidgetProvider>
+            <SystemBars style={colorScheme === "dark" ? "light" : "dark"} />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="auth" options={{ headerShown: false }} />
+              <Stack.Screen name="auth-popup" options={{ presentation: "modal", headerShown: false }} />
+              <Stack.Screen name="auth-callback" options={{ headerShown: false }} />
+            </Stack>
+            <StatusBar style={colorScheme === "dark" ? "light" : "dark"} />
+          </WidgetProvider>
+        </AuthProvider>
       </ThemeProvider>
     </GestureHandlerRootView>
   );

@@ -11,11 +11,14 @@ import {
   Alert,
   Platform,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from "react-native";
 import { IconSymbol } from "@/components/IconSymbol";
 import { colors } from "@/styles/commonStyles";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { apiCall } from "@/utils/api";
+import { authenticatedApiCall } from "@/utils/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { Redirect } from "expo-router";
 
 interface ChecklistItem {
   text: string;
@@ -41,6 +44,7 @@ const moodEmojis: { [key: string]: string } = {
 };
 
 export default function JournalScreen() {
+  const { user, loading: authLoading } = useAuth();
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -52,14 +56,16 @@ export default function JournalScreen() {
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([{ text: "", completed: false }]);
 
   useEffect(() => {
-    console.log("JournalScreen mounted, fetching entries");
-    fetchEntries();
-  }, []);
+    if (user) {
+      console.log("JournalScreen mounted, user authenticated, fetching entries");
+      fetchEntries();
+    }
+  }, [user]);
 
   const fetchEntries = async () => {
     console.log("Fetching journal entries from backend");
     try {
-      const data = await apiCall<JournalEntry[]>('/api/journal/entries', {
+      const data = await authenticatedApiCall<JournalEntry[]>('/api/journal/entries', {
         method: 'GET',
       });
       console.log("✅ Fetched entries:", data);
@@ -135,7 +141,7 @@ export default function JournalScreen() {
     try {
       if (editingEntry) {
         console.log("Updating existing entry:", editingEntry.id);
-        const updatedEntry = await apiCall<JournalEntry>(
+        const updatedEntry = await authenticatedApiCall<JournalEntry>(
           `/api/journal/entries/${editingEntry.id}`,
           {
             method: 'PUT',
@@ -150,7 +156,7 @@ export default function JournalScreen() {
         console.log("✅ Entry updated:", updatedEntry);
       } else {
         console.log("Creating new entry");
-        const newEntry = await apiCall<JournalEntry>('/api/journal/entries', {
+        const newEntry = await authenticatedApiCall<JournalEntry>('/api/journal/entries', {
           method: 'POST',
           body: JSON.stringify({
             title: title.trim(),
@@ -182,7 +188,7 @@ export default function JournalScreen() {
           onPress: async () => {
             console.log("User confirmed deletion of entry:", id);
             try {
-              const result = await apiCall<{ success: boolean }>(
+              const result = await authenticatedApiCall<{ success: boolean }>(
                 `/api/journal/entries/${id}`,
                 {
                   method: 'DELETE',
@@ -212,7 +218,7 @@ export default function JournalScreen() {
       const items = JSON.parse(entry.content) as ChecklistItem[];
       items[itemIndex].completed = !items[itemIndex].completed;
       
-      const updatedEntry = await apiCall<JournalEntry>(
+      const updatedEntry = await authenticatedApiCall<JournalEntry>(
         `/api/journal/entries/${entryId}`,
         {
           method: 'PUT',
@@ -327,6 +333,24 @@ export default function JournalScreen() {
       );
     }
   };
+
+  // Show loading spinner while checking authentication
+  if (authLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.emptyContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.emptyText}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Redirect to auth screen if not logged in
+  if (!user) {
+    console.log("User not authenticated, redirecting to auth screen");
+    return <Redirect href="/auth" />;
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

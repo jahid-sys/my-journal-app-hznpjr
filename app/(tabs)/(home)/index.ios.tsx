@@ -16,11 +16,17 @@ import { colors } from "@/styles/commonStyles";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { apiCall } from "@/utils/api";
 
+interface ChecklistItem {
+  text: string;
+  completed: boolean;
+}
+
 interface JournalEntry {
   id: string;
   title: string;
   content: string;
   mood?: string;
+  type: "note" | "checklist";
   createdAt: string;
   updatedAt: string;
 }
@@ -41,6 +47,8 @@ export default function JournalScreen() {
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [selectedMood, setSelectedMood] = useState<string | undefined>(undefined);
+  const [entryType, setEntryType] = useState<"note" | "checklist">("note");
+  const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([{ text: "", completed: false }]);
 
   useEffect(() => {
     console.log("JournalScreen mounted, fetching entries");
@@ -69,6 +77,8 @@ export default function JournalScreen() {
     setTitle("");
     setContent("");
     setSelectedMood(undefined);
+    setEntryType("note");
+    setChecklistItems([{ text: "", completed: false }]);
     setModalVisible(true);
   };
 
@@ -76,16 +86,49 @@ export default function JournalScreen() {
     console.log("User tapped to edit entry:", entry.id);
     setEditingEntry(entry);
     setTitle(entry.title);
-    setContent(entry.content);
     setSelectedMood(entry.mood);
+    setEntryType(entry.type || "note");
+    
+    if (entry.type === "checklist") {
+      try {
+        const items = JSON.parse(entry.content) as ChecklistItem[];
+        setChecklistItems(items);
+        setContent("");
+      } catch (error) {
+        console.error("Error parsing checklist items:", error);
+        setChecklistItems([{ text: "", completed: false }]);
+      }
+    } else {
+      setContent(entry.content);
+      setChecklistItems([{ text: "", completed: false }]);
+    }
+    
     setModalVisible(true);
   };
 
   const saveEntry = async () => {
-    console.log("User tapped Save button", { title, content, mood: selectedMood });
-    if (!title.trim() || !content.trim()) {
-      Alert.alert("Error", "Please fill in both title and content");
+    console.log("User tapped Save button", { title, entryType, mood: selectedMood });
+    
+    if (!title.trim()) {
+      Alert.alert("Error", "Please enter a title");
       return;
+    }
+
+    let contentToSave = "";
+    
+    if (entryType === "note") {
+      if (!content.trim()) {
+        Alert.alert("Error", "Please enter some content");
+        return;
+      }
+      contentToSave = content.trim();
+    } else {
+      const validItems = checklistItems.filter(item => item.text.trim() !== "");
+      if (validItems.length === 0) {
+        Alert.alert("Error", "Please add at least one checklist item");
+        return;
+      }
+      contentToSave = JSON.stringify(validItems);
     }
 
     try {
@@ -97,8 +140,9 @@ export default function JournalScreen() {
             method: 'PUT',
             body: JSON.stringify({
               title: title.trim(),
-              content: content.trim(),
+              content: contentToSave,
               mood: selectedMood,
+              type: entryType,
             }),
           }
         );
@@ -109,8 +153,9 @@ export default function JournalScreen() {
           method: 'POST',
           body: JSON.stringify({
             title: title.trim(),
-            content: content.trim(),
+            content: contentToSave,
             mood: selectedMood,
+            type: entryType,
           }),
         });
         console.log("✅ Entry created:", newEntry);
@@ -155,6 +200,53 @@ export default function JournalScreen() {
     );
   };
 
+  const toggleChecklistItem = async (entryId: string, itemIndex: number) => {
+    console.log("User toggled checklist item:", entryId, itemIndex);
+    const entry = entries.find(e => e.id === entryId);
+    if (!entry || entry.type !== "checklist") {
+      return;
+    }
+
+    try {
+      const items = JSON.parse(entry.content) as ChecklistItem[];
+      items[itemIndex].completed = !items[itemIndex].completed;
+      
+      const updatedEntry = await apiCall<JournalEntry>(
+        `/api/journal/entries/${entryId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            content: JSON.stringify(items),
+          }),
+        }
+      );
+      console.log("✅ Checklist item toggled:", updatedEntry);
+      fetchEntries();
+    } catch (error) {
+      console.error("Error toggling checklist item:", error);
+      Alert.alert("Error", "Failed to update checklist");
+    }
+  };
+
+  const addChecklistItem = () => {
+    console.log("User tapped Add Item button");
+    setChecklistItems([...checklistItems, { text: "", completed: false }]);
+  };
+
+  const updateChecklistItem = (index: number, text: string) => {
+    const newItems = [...checklistItems];
+    newItems[index].text = text;
+    setChecklistItems(newItems);
+  };
+
+  const removeChecklistItem = (index: number) => {
+    console.log("User removed checklist item:", index);
+    if (checklistItems.length > 1) {
+      const newItems = checklistItems.filter((_, i) => i !== index);
+      setChecklistItems(newItems);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const today = new Date();
@@ -171,6 +263,67 @@ export default function JournalScreen() {
         day: "numeric",
         year: date.getFullYear() !== today.getFullYear() ? "numeric" : undefined,
       });
+    }
+  };
+
+  const renderEntryContent = (entry: JournalEntry) => {
+    if (entry.type === "checklist") {
+      try {
+        const items = JSON.parse(entry.content) as ChecklistItem[];
+        const completedCount = items.filter(item => item.completed).length;
+        const totalCount = items.length;
+        const completedText = `${completedCount}/${totalCount} completed`;
+        
+        return (
+          <View>
+            {items.slice(0, 3).map((item, index) => {
+              const itemText = item.text;
+              return (
+                <View key={index} style={styles.checklistPreviewItem}>
+                  <TouchableOpacity
+                    onPress={() => toggleChecklistItem(entry.id, index)}
+                    style={styles.checkbox}
+                  >
+                    {item.completed && (
+                      <IconSymbol
+                        ios_icon_name="checkmark"
+                        android_material_icon_name="check"
+                        size={16}
+                        color={colors.primary}
+                      />
+                    )}
+                  </TouchableOpacity>
+                  <Text
+                    style={[
+                      styles.checklistPreviewText,
+                      item.completed && styles.checklistPreviewTextCompleted,
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {itemText}
+                  </Text>
+                </View>
+              );
+            })}
+            {items.length > 3 && (
+              <Text style={styles.moreItemsText}>
+                +{items.length - 3} more items
+              </Text>
+            )}
+            <Text style={styles.checklistProgress}>{completedText}</Text>
+          </View>
+        );
+      } catch (error) {
+        console.error("Error rendering checklist:", error);
+        return <Text style={styles.entryContent}>Invalid checklist data</Text>;
+      }
+    } else {
+      const contentText = entry.content;
+      return (
+        <Text style={styles.entryContent} numberOfLines={3}>
+          {contentText}
+        </Text>
+      );
     }
   };
 
@@ -205,7 +358,7 @@ export default function JournalScreen() {
             <Text style={styles.emptyText}>Tap the + button to create your first journal entry</Text>
           </View>
         ) : (
-          entries.map((entry, index) => (
+          entries.map((entry) => (
             <TouchableOpacity
               key={entry.id}
               style={styles.entryCard}
@@ -220,6 +373,16 @@ export default function JournalScreen() {
                   <Text style={styles.entryTitle} numberOfLines={1}>
                     {entry.title}
                   </Text>
+                  {entry.type === "checklist" && (
+                    <View style={styles.checklistBadge}>
+                      <IconSymbol
+                        ios_icon_name="checklist"
+                        android_material_icon_name="check-circle"
+                        size={16}
+                        color={colors.primary}
+                      />
+                    </View>
+                  )}
                 </View>
                 <TouchableOpacity
                   onPress={() => deleteEntry(entry.id)}
@@ -233,9 +396,7 @@ export default function JournalScreen() {
                   />
                 </TouchableOpacity>
               </View>
-              <Text style={styles.entryContent} numberOfLines={3}>
-                {entry.content}
-              </Text>
+              {renderEntryContent(entry)}
               <Text style={styles.entryDate}>{formatDate(entry.createdAt)}</Text>
             </TouchableOpacity>
           ))
@@ -299,17 +460,117 @@ export default function JournalScreen() {
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Content</Text>
-                <TextInput
-                  style={styles.contentInput}
-                  value={content}
-                  onChangeText={setContent}
-                  placeholder="Write your thoughts..."
-                  placeholderTextColor={colors.textSecondary}
-                  multiline
-                  textAlignVertical="top"
-                />
+                <Text style={styles.label}>Entry Type</Text>
+                <View style={styles.typeContainer}>
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      entryType === "note" && styles.typeButtonSelected,
+                    ]}
+                    onPress={() => {
+                      console.log("User selected note type");
+                      setEntryType("note");
+                    }}
+                  >
+                    <IconSymbol
+                      ios_icon_name="doc.text.fill"
+                      android_material_icon_name="description"
+                      size={20}
+                      color={entryType === "note" ? colors.primary : colors.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        entryType === "note" && styles.typeButtonTextSelected,
+                      ]}
+                    >
+                      Note
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.typeButton,
+                      entryType === "checklist" && styles.typeButtonSelected,
+                    ]}
+                    onPress={() => {
+                      console.log("User selected checklist type");
+                      setEntryType("checklist");
+                    }}
+                  >
+                    <IconSymbol
+                      ios_icon_name="checklist"
+                      android_material_icon_name="check-circle"
+                      size={20}
+                      color={entryType === "checklist" ? colors.primary : colors.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.typeButtonText,
+                        entryType === "checklist" && styles.typeButtonTextSelected,
+                      ]}
+                    >
+                      Checklist
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
+
+              {entryType === "note" ? (
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Content</Text>
+                  <TextInput
+                    style={styles.contentInput}
+                    value={content}
+                    onChangeText={setContent}
+                    placeholder="Write your thoughts..."
+                    placeholderTextColor={colors.textSecondary}
+                    multiline
+                    textAlignVertical="top"
+                  />
+                </View>
+              ) : (
+                <View style={styles.inputContainer}>
+                  <Text style={styles.label}>Checklist Items</Text>
+                  {checklistItems.map((item, index) => {
+                    const itemText = item.text;
+                    return (
+                      <View key={index} style={styles.checklistItemContainer}>
+                        <View style={styles.checkboxPlaceholder} />
+                        <TextInput
+                          style={styles.checklistItemInput}
+                          value={itemText}
+                          onChangeText={(text) => updateChecklistItem(index, text)}
+                          placeholder={`Item ${index + 1}`}
+                          placeholderTextColor={colors.textSecondary}
+                        />
+                        {checklistItems.length > 1 && (
+                          <TouchableOpacity
+                            onPress={() => removeChecklistItem(index)}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          >
+                            <IconSymbol
+                              ios_icon_name="minus.circle.fill"
+                              android_material_icon_name="remove-circle"
+                              size={24}
+                              color={colors.textSecondary}
+                            />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    );
+                  })}
+                  <TouchableOpacity style={styles.addItemButton} onPress={addChecklistItem}>
+                    <IconSymbol
+                      ios_icon_name="plus.circle.fill"
+                      android_material_icon_name="add-circle"
+                      size={20}
+                      color={colors.primary}
+                    />
+                    <Text style={styles.addItemButtonText}>Add Item</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </ScrollView>
           </SafeAreaView>
         </KeyboardAvoidingView>
@@ -412,11 +673,50 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: "Georgia",
   },
+  checklistBadge: {
+    marginLeft: 8,
+  },
   entryContent: {
     fontSize: 15,
     color: colors.text,
     lineHeight: 22,
     marginBottom: 12,
+  },
+  checklistPreviewItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.border,
+    marginRight: 8,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checklistPreviewText: {
+    fontSize: 15,
+    color: colors.text,
+    flex: 1,
+  },
+  checklistPreviewTextCompleted: {
+    textDecorationLine: "line-through",
+    color: colors.textSecondary,
+  },
+  moreItemsText: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  checklistProgress: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: "600",
+    marginTop: 4,
   },
   entryDate: {
     fontSize: 13,
@@ -500,6 +800,34 @@ const styles = StyleSheet.create({
   moodButtonEmoji: {
     fontSize: 28,
   },
+  typeContainer: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  typeButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 12,
+    gap: 8,
+  },
+  typeButtonSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.accent,
+  },
+  typeButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.textSecondary,
+  },
+  typeButtonTextSelected: {
+    color: colors.primary,
+  },
   contentInput: {
     backgroundColor: colors.card,
     borderWidth: 1,
@@ -510,5 +838,41 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: 200,
     lineHeight: 24,
+  },
+  checklistItemContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    gap: 8,
+  },
+  checkboxPlaceholder: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
+  checklistItemInput: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: colors.text,
+  },
+  addItemButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+    gap: 8,
+    marginTop: 8,
+  },
+  addItemButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: colors.primary,
   },
 });
